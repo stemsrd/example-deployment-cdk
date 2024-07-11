@@ -23,7 +23,7 @@ class ExampleDeploymentCdkStack(Stack):
                 ),
                 ec2.SubnetConfiguration(
                     name="Private",
-                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,  # Changed from PRIVATE_WITH_NAT
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
                     cidr_mask=24
                 )
             ]
@@ -60,10 +60,10 @@ class ExampleDeploymentCdkStack(Stack):
 
         # Create EC2 Instance
         instance = ec2.Instance(self, "DjangoScraperInstance",
-            instance_type=ec2.InstanceType("t2.micro"),
-            machine_image=ec2.MachineImage.latest_amazon_linux2(),  # Changed from latestAmazonLinux
+            instance_type=ec2.InstanceType("t3.micro"),
+            machine_image=ec2.AmazonLinuxImage(generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2),
             vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),  # Changed from PRIVATE_WITH_NAT
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
             security_group=security_group,
             role=role
         )
