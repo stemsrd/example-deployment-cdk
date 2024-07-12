@@ -33,6 +33,13 @@ class ExampleDeploymentCdkStack(Stack):
             ec2.Port.tcp(80),
             "Allow HTTP traffic"
         )
+        
+        # Allow inbound traffic on port 22 (SSH) from anywhere
+        security_group.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(22),
+            "Allow SSH traffic"
+        )
 
         # Create IAM Role for EC2
         role = iam.Role(self, "DjangoScraperEC2Role",
