@@ -42,7 +42,6 @@ class ExampleDeploymentCdkStack(Stack):
         # Add necessary policies to the role
         role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"))
         role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3ReadOnlyAccess"))
-        role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"))
 
         # Create Key Pair
         key_pair = ec2.CfnKeyPair(self, "DjangoScraperKeyPair",
