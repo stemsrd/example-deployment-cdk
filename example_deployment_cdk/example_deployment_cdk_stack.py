@@ -42,6 +42,7 @@ class ExampleDeploymentCdkStack(Stack):
         # Add necessary policies to the role
         role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"))
         role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3ReadOnlyAccess"))
+        role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"))
 
         # Create Key Pair
         key_pair = ec2.CfnKeyPair(self, "DjangoScraperKeyPair",
@@ -56,7 +57,13 @@ class ExampleDeploymentCdkStack(Stack):
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
             security_group=security_group,
             role=role,
-            key_name=key_pair.key_name
+            key_name=key_pair.key_name,
+            user_data=ec2.UserData.custom('''
+                #!/bin/bash
+                yum update -y
+                yum install -y python3 python3-pip nginx git
+                pip3 install gunicorn
+            ''')
         )
 
         # Output the instance ID and public IP
