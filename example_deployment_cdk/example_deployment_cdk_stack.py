@@ -14,18 +14,9 @@ class ExampleDeploymentCdkStack(Stack):
         # Create VPC
         vpc = ec2.Vpc(self, "DjangoScraperVPC",
             max_azs=2,
-            nat_gateways=1,
             subnet_configuration=[
-                ec2.SubnetConfiguration(
-                    name="Public",
-                    subnet_type=ec2.SubnetType.PUBLIC,
-                    cidr_mask=24
-                ),
-                ec2.SubnetConfiguration(
-                    name="Private",
-                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
-                    cidr_mask=24
-                )
+                ec2.SubnetConfiguration(name="Public", subnet_type=ec2.SubnetType.PUBLIC, cidr_mask=24),
+                ec2.SubnetConfiguration(name="Private", subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS, cidr_mask=24)
             ]
         )
 
@@ -43,33 +34,31 @@ class ExampleDeploymentCdkStack(Stack):
             "Allow HTTP traffic"
         )
 
-        # Allow inbound traffic on port 22 (SSH) from anywhere (you might want to restrict this in production)
-        security_group.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
-            ec2.Port.tcp(22),
-            "Allow SSH traffic"
-        )
-
         # Create IAM Role for EC2
         role = iam.Role(self, "DjangoScraperEC2Role",
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com")
         )
 
-        # Add necessary policies to the role (e.g., for S3 access if needed)
+        # Add necessary policies to the role
+        role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"))
         role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3ReadOnlyAccess"))
+
+        # Create Key Pair
+        key_pair = ec2.CfnKeyPair(self, "DjangoScraperKeyPair",
+            key_name="django-scraper-key"
+        )
 
         # Create EC2 Instance
         instance = ec2.Instance(self, "DjangoScraperInstance",
             instance_type=ec2.InstanceType("t3.micro"),
             machine_image=ec2.AmazonLinuxImage(generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2),
             vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
             security_group=security_group,
-            role=role
+            role=role,
+            key_name=key_pair.key_name
         )
 
-        # Output the instance ID
+        # Output the instance ID and public IP
         CfnOutput(self, "InstanceId", value=instance.instance_id)
-
-        # Output the private IP address
-        CfnOutput(self, "PrivateIP", value=instance.instance_private_ip)
+        CfnOutput(self, "PublicIP", value=instance.instance_public_ip)
