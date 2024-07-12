@@ -61,7 +61,28 @@ class ExampleDeploymentCdkStack(Stack):
                 #!/bin/bash
                 yum update -y
                 yum install -y python3 python3-pip nginx git
-                pip3 install gunicorn
+
+                # Create uvicorn.service file
+                cat << EOF > /etc/systemd/system/uvicorn.service
+                [Unit]
+                Description=uvicorn daemon
+                After=network.target
+
+                [Service]
+                User=ec2-user
+                Group=ec2-user
+                WorkingDirectory=/home/ec2-user/app
+                ExecStart=/home/ec2-user/app/venv/bin/uvicorn api_project.asgi:application --host 0.0.0.0 --port 8000 --workers 4
+
+                [Install]
+                WantedBy=multi-user.target
+                EOF
+
+                # Reload systemd to recognize the new service
+                systemctl daemon-reload
+
+                # Enable the service to start on boot
+                systemctl enable uvicorn.service
             ''')
         )
 
