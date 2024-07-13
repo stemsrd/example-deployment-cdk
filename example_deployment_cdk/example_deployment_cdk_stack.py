@@ -78,8 +78,8 @@ class ExampleDeploymentCdkStack(Stack):
                 [Service]
                 User=ec2-user
                 Group=ec2-user
-                WorkingDirectory=/home/ec2-user/app
-                ExecStart=/home/ec2-user/app/venv/bin/uvicorn api_project.asgi:application --host 0.0.0.0 --port 8000 --workers 4
+                WorkingDirectory=/home/ec2-user/app/api_project
+                ExecStart=/home/ec2-user/app/venv/bin/python -m uvicorn api_project.asgi:application --host 0.0.0.0 --port 8000
 
                 [Install]
                 WantedBy=multi-user.target
