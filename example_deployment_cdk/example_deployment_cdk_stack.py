@@ -2,7 +2,10 @@ from aws_cdk import (
     Stack,
     aws_ec2 as ec2,
     aws_iam as iam,
-    CfnOutput
+    aws_rds as rds,
+    CfnOutput,
+    Duration,
+    RemovalPolicy
 )
 from constructs import Construct
 
@@ -33,13 +36,29 @@ class ExampleDeploymentCdkStack(Stack):
             ec2.Port.tcp(80),
             "Allow HTTP traffic"
         )
-        
+
         # Allow inbound traffic on port 22 (SSH) from anywhere
         security_group.add_ingress_rule(
             ec2.Peer.any_ipv4(),
             ec2.Port.tcp(22),
             "Allow SSH traffic"
         )
+
+        # Create PostgreSQL instance
+        db_instance = rds.DatabaseInstance(self, "PostgreSQLInstance",
+            engine=rds.DatabaseInstanceEngine.postgres(version=rds.PostgresEngineVersion.VER_14),
+            instance_type=ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO),
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            security_groups=[security_group],
+            database_name="your_db_name",
+            credentials=rds.Credentials.from_generated_secret("postgres"),  # This will generate a secret in AWS Secrets Manager
+            backup_retention=Duration.days(7),
+            removal_policy=RemovalPolicy.DESTROY  # Be careful with this in production
+        )
+
+        # Allow EC2 instance to access the RDS instance
+        db_instance.connections.allow_default_port_from(security_group)
 
         # Create IAM Role for EC2
         role = iam.Role(self, "DjangoScraperEC2Role",
@@ -67,7 +86,7 @@ class ExampleDeploymentCdkStack(Stack):
             user_data=ec2.UserData.custom('''
                 #!/bin/bash
                 yum update -y
-                yum install -y python3 python3-pip nginx git
+                yum install -y python3 python3-pip nginx git postgresql
 
                 # Create uvicorn.service file
                 cat << EOF > /etc/systemd/system/uvicorn.service
@@ -92,6 +111,12 @@ class ExampleDeploymentCdkStack(Stack):
                 systemctl enable uvicorn.service
             ''')
         )
+
+        # Output the database endpoint
+        CfnOutput(self, "DBEndpoint", value=db_instance.db_instance_endpoint_address)
+        CfnOutput(self, "DBPort", value=db_instance.db_instance_endpoint_port)
+        CfnOutput(self, "DBName", value=db_instance.instance_identifier)
+        CfnOutput(self, "DBSecretName", value=db_instance.secret.secret_name)
 
         # Output the instance ID and public IP
         CfnOutput(self, "InstanceId", value=instance.instance_id)
