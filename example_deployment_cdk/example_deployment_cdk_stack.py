@@ -44,21 +44,34 @@ class ExampleDeploymentCdkStack(Stack):
             "Allow SSH traffic"
         )
 
+        # Create RDS Subnet Group
+        rds_subnet_group = rds.SubnetGroup(self, "RdsSubnetGroup",
+            description="Subnet group for RDS instance",
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
+        )
+
         # Create PostgreSQL instance
         db_instance = rds.DatabaseInstance(self, "PostgreSQLInstance",
             engine=rds.DatabaseInstanceEngine.postgres(version=rds.PostgresEngineVersion.VER_14),
             instance_type=ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO),
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            subnet_group=rds_subnet_group,
             security_groups=[security_group],
-            database_name="your_db_name",
-            credentials=rds.Credentials.from_generated_secret("postgres"),  # This will generate a secret in AWS Secrets Manager
+            database_name="example_deployment_db",
+            credentials=rds.Credentials.from_generated_secret("postgres"),
             backup_retention=Duration.days(7),
-            removal_policy=RemovalPolicy.DESTROY  # Be careful with this in production
+            removal_policy=RemovalPolicy.DESTROY,
+            publicly_accessible=False,
+            parameters={
+                "rds.force_ssl": "0",
+                "password_encryption": "md5"
+            }
         )
 
         # Allow EC2 instance to access the RDS instance
-        db_instance.connections.allow_default_port_from(security_group)
+        db_instance.connections.allow_from(security_group, ec2.Port.tcp(5432))
 
         # Create IAM Role for EC2
         role = iam.Role(self, "DjangoScraperEC2Role",
@@ -68,6 +81,25 @@ class ExampleDeploymentCdkStack(Stack):
         # Add necessary policies to the role
         role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"))
         role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3ReadOnlyAccess"))
+        role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonRDSFullAccess"))
+        role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("SecretsManagerReadWrite"))
+
+        # Create VPC Endpoint for Secrets Manager
+        secrets_manager_endpoint = ec2.InterfaceVpcEndpoint(self, "SecretsManagerEndpoint",
+            vpc=vpc,
+            service=ec2.InterfaceVpcEndpointService("com.amazonaws.eu-south-2.secretsmanager"),
+            private_dns_enabled=True,
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
+        )
+
+        # Allow the EC2 instance to access the Secrets Manager VPC Endpoint
+        secrets_manager_endpoint.add_to_policy(
+            iam.PolicyStatement(
+                principals=[iam.ArnPrincipal(role.role_arn)],
+                actions=["secretsmanager:GetSecretValue"],
+                resources=["*"]
+            )
+        )
 
         # Create Key Pair
         key_pair = ec2.CfnKeyPair(self, "DjangoScraperKeyPair",
@@ -86,7 +118,12 @@ class ExampleDeploymentCdkStack(Stack):
             user_data=ec2.UserData.custom('''
                 #!/bin/bash
                 yum update -y
-                yum install -y python3 python3-pip nginx git postgresql
+                amazon-linux-extras enable postgresql14
+                yum install -y python3 python3-pip nginx git postgresql14
+
+                # Update libpq
+                yum install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+                yum install -y postgresql14-libs
 
                 # Create uvicorn.service file
                 cat << EOF > /etc/systemd/system/uvicorn.service
@@ -97,8 +134,9 @@ class ExampleDeploymentCdkStack(Stack):
                 [Service]
                 User=ec2-user
                 Group=ec2-user
-                WorkingDirectory=/home/ec2-user/app/api_project
-                ExecStart=/home/ec2-user/app/venv/bin/python -m uvicorn api_project.asgi:application --host 0.0.0.0 --port 8000
+                WorkingDirectory=/home/ec2-user/app
+                Environment="PYTHONPATH=/home/ec2-user/app"
+                ExecStart=/home/ec2-user/app/venv/bin/uvicorn api_project.asgi:application --host 0.0.0.0 --port 8000
 
                 [Install]
                 WantedBy=multi-user.target
