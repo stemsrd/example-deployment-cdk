@@ -13,10 +13,13 @@ class ExampleDeploymentCdkStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        
+        database_name = "example_deployment_db"
 
         # Create VPC
         vpc = ec2.Vpc(self, "DjangoScraperVPC",
             max_azs=2,
+            nat_gateways=1,
             subnet_configuration=[
                 ec2.SubnetConfiguration(name="Public", subnet_type=ec2.SubnetType.PUBLIC, cidr_mask=24),
                 ec2.SubnetConfiguration(name="Private", subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS, cidr_mask=24)
@@ -59,7 +62,7 @@ class ExampleDeploymentCdkStack(Stack):
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
             subnet_group=rds_subnet_group,
             security_groups=[security_group],
-            database_name="example_deployment_db",
+            database_name=database_name,
             credentials=rds.Credentials.from_generated_secret("postgres"),
             backup_retention=Duration.days(7),
             removal_policy=RemovalPolicy.DESTROY,
@@ -119,11 +122,14 @@ class ExampleDeploymentCdkStack(Stack):
                 #!/bin/bash
                 yum update -y
                 amazon-linux-extras enable postgresql14
-                yum install -y python3 python3-pip nginx git postgresql14
+                yum install -y postgresql
+                yum install -y python3 python3-pip git
+                amazon-linux-extras install -y nginx1
+                
 
                 # Update libpq
-                yum install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-                yum install -y postgresql14-libs
+                #yum install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+                #yum install -y postgresql14-libs
 
                 # Create uvicorn.service file
                 cat << EOF > /etc/systemd/system/uvicorn.service
@@ -153,8 +159,9 @@ class ExampleDeploymentCdkStack(Stack):
         # Output the database endpoint
         CfnOutput(self, "DBEndpoint", value=db_instance.db_instance_endpoint_address)
         CfnOutput(self, "DBPort", value=db_instance.db_instance_endpoint_port)
-        CfnOutput(self, "DBName", value=db_instance.instance_identifier)
+        CfnOutput(self, "DBName", value=database_name)
         CfnOutput(self, "DBSecretName", value=db_instance.secret.secret_name)
+        
 
         # Output the instance ID and public IP
         CfnOutput(self, "InstanceId", value=instance.instance_id)
